@@ -27,18 +27,101 @@
   }
 
   /**
-   * Build the tracklist HTML.
+   * Format a single track as a text line.
    */
-  function buildTracklist(tracklist) {
+  function formatTrackLine(t) {
+    const artist = formatArtists(t.artists);
+    const trackNum = t.position ? t.position.replace(/^\d+-/, "") : "";
+    const parts = [trackNum ? trackNum + "." : ""];
+    if (artist) {
+      parts.push(artist + " -");
+    }
+    parts.push(t.title);
+    if (t.duration) {
+      parts.push("(" + t.duration + ")");
+    }
+    return parts.join(" ");
+  }
+
+  /**
+   * Format a tracklist as plain text for use in templates.
+   * Groups tracks by disc when positions contain a disc prefix (e.g. "1-1").
+   */
+  function formatTracklistText(tracklist) {
     if (!tracklist || !tracklist.length) {
       return "";
     }
 
+    const tracks = tracklist.filter(function (t) {
+      return t.type_ === "track";
+    });
+
+    const hasDiscs = tracks.some(function (t) {
+      return /^\d+-/.test(t.position);
+    });
+
+    if (!hasDiscs) {
+      return tracks.map(formatTrackLine).join("\n");
+    }
+
+    const discs = {};
+    tracks.forEach(function (t) {
+      const match = t.position.match(/^(\d+)-/);
+      const discNum = match ? match[1] : "1";
+      if (!discs[discNum]) {
+        discs[discNum] = [];
+      }
+      discs[discNum].push(t);
+    });
+
+    const discKeys = Object.keys(discs).sort(function (a, b) {
+      return Number(a) - Number(b);
+    });
+
+    return discKeys
+      .map(function (key) {
+        return "CD " + key + "\n" + discs[key].map(formatTrackLine).join("\n");
+      })
+      .join("\n\n");
+  }
+
+  /**
+   * Process the description template with release data.
+   */
+  function processTemplate(release) {
+    const tpl = dfwProduct.descriptionTpl;
+
+    if (!tpl) {
+      return "";
+    }
+
+    const formats = (release.formats || []).map(function (f) {
+      return f.name;
+    });
+
+    const replacements = {
+      "[title]": release.title || "",
+      "[artist]": release.artists_sort || "",
+      "[year]": release.year ? String(release.year) : "",
+      "[country]": release.country || "",
+      "[format]": formats.join(", "),
+      "[genre]": (release.genres || []).join(", "),
+      "[tracklist]": formatTracklistText(release.tracklist),
+    };
+
+    let result = tpl;
+    Object.keys(replacements).forEach(function (key) {
+      result = result.split(key).join(replacements[key]);
+    });
+
+    return result;
+  }
+
+  /**
+   * Build a table for a list of tracks.
+   */
+  function buildTrackTable(tracks) {
     let html =
-      '<div class="dfw-tracklist">' +
-      '<h3><label><input type="checkbox" checked data-field="tracklist"> ' +
-      dfwProduct.tracklist +
-      "</label></h3>" +
       "<table><thead><tr>" +
       "<th>#</th>" +
       "<th>Artist</th>" +
@@ -46,15 +129,15 @@
       "<th>Duration</th>" +
       "</tr></thead><tbody>";
 
-    tracklist.forEach(function (track) {
-      if (track.type_ !== "track") {
-        return;
-      }
+    tracks.forEach(function (track) {
+      const trackNum = track.position
+        ? track.position.replace(/^\d+-/, "")
+        : "";
 
       html +=
         "<tr>" +
         "<td>" +
-        track.position +
+        trackNum +
         "</td>" +
         "<td>" +
         formatArtists(track.artists) +
@@ -68,7 +151,52 @@
         "</tr>";
     });
 
-    html += "</tbody></table></div>";
+    html += "</tbody></table>";
+    return html;
+  }
+
+  /**
+   * Build the tracklist HTML.
+   */
+  function buildTracklist(tracklist) {
+    if (!tracklist || !tracklist.length) {
+      return "";
+    }
+
+    const tracks = tracklist.filter(function (t) {
+      return t.type_ === "track";
+    });
+
+    const hasDiscs = tracks.some(function (t) {
+      return /^\d+-/.test(t.position);
+    });
+
+    let html =
+      '<div class="dfw-tracklist">' + "<h3>" + dfwProduct.tracklist + "</h3>";
+
+    if (!hasDiscs) {
+      html += buildTrackTable(tracks);
+    } else {
+      const discs = {};
+      tracks.forEach(function (t) {
+        const match = t.position.match(/^(\d+)-/);
+        const discNum = match ? match[1] : "1";
+        if (!discs[discNum]) {
+          discs[discNum] = [];
+        }
+        discs[discNum].push(t);
+      });
+
+      Object.keys(discs)
+        .sort(function (a, b) {
+          return Number(a) - Number(b);
+        })
+        .forEach(function (key) {
+          html += "<h4>CD " + key + "</h4>" + buildTrackTable(discs[key]);
+        });
+    }
+
+    html += "</div>";
     return html;
   }
 
@@ -130,6 +258,28 @@
 
     html += "</div>";
     return html;
+  }
+
+  /**
+   * Build the description preview HTML.
+   */
+  function buildDescription(release) {
+    const text = processTemplate(release);
+
+    if (!text) {
+      return "";
+    }
+
+    return (
+      '<div class="dfw-description">' +
+      '<h3><label><input type="checkbox" checked data-field="description"> ' +
+      dfwProduct.description +
+      "</label></h3>" +
+      '<pre class="dfw-description-preview">' +
+      text +
+      "</pre>" +
+      "</div>"
+    );
   }
 
   /**
@@ -205,6 +355,7 @@
       rows +
       "</tbody>" +
       "</table>" +
+      buildDescription(release) +
       buildTracklist(release.tracklist) +
       "</div>" +
       '<div class="dfw-modal-footer">' +
@@ -279,6 +430,11 @@
           uri: cb.dataset.uri,
           type: key,
         });
+        return;
+      }
+
+      if (key === "description") {
+        serverFields.description = processTemplate(release);
         return;
       }
 

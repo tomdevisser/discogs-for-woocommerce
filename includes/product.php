@@ -45,27 +45,29 @@ function dfw_enqueue_product_scripts( $hook_suffix ) {
 		'dfw-product',
 		'dfwProduct',
 		array(
-			'ajaxUrl'      => admin_url( 'admin-ajax.php' ),
-			'nonce'        => wp_create_nonce( 'dfw_product' ),
-			'fetchButton'  => __( 'Fetch from Discogs', 'dfw' ),
-			'fetching'     => __( 'Fetching…', 'dfw' ),
-			'modalTitle'   => __( 'Discogs Results', 'dfw' ),
-			'cancel'       => __( 'Cancel', 'dfw' ),
-			'addToProduct' => __( 'Add to product', 'dfw' ),
-			'noResults'    => __( 'No results found.', 'dfw' ),
-			'field'        => __( 'Field', 'dfw' ),
-			'value'        => __( 'Value', 'dfw' ),
-			'import'       => __( 'Import', 'dfw' ),
-			'tracklist'    => __( 'Tracklist', 'dfw' ),
-			'productImage' => __( 'Product Image', 'dfw' ),
-			'gallery'      => __( 'Product Gallery', 'dfw' ),
-			'applying'     => __( 'Applying…', 'dfw' ),
-			'labelTitle'   => __( 'Title', 'dfw' ),
-			'labelArtist'  => __( 'Artist', 'dfw' ),
-			'labelYear'    => __( 'Year', 'dfw' ),
-			'labelCountry' => __( 'Country', 'dfw' ),
-			'category'     => __( 'Category (format)', 'dfw' ),
-			'subcategory'  => __( 'Subcategories (genre)', 'dfw' ),
+			'ajaxUrl'        => admin_url( 'admin-ajax.php' ),
+			'nonce'          => wp_create_nonce( 'dfw_product' ),
+			'fetchButton'    => __( 'Fetch from Discogs', 'dfw' ),
+			'fetching'       => __( 'Fetching…', 'dfw' ),
+			'modalTitle'     => __( 'Discogs Results', 'dfw' ),
+			'cancel'         => __( 'Cancel', 'dfw' ),
+			'addToProduct'   => __( 'Add to product', 'dfw' ),
+			'noResults'      => __( 'No results found.', 'dfw' ),
+			'field'          => __( 'Field', 'dfw' ),
+			'value'          => __( 'Value', 'dfw' ),
+			'import'         => __( 'Import', 'dfw' ),
+			'tracklist'      => __( 'Tracklist', 'dfw' ),
+			'productImage'   => __( 'Product Image', 'dfw' ),
+			'gallery'        => __( 'Product Gallery', 'dfw' ),
+			'applying'       => __( 'Applying…', 'dfw' ),
+			'labelTitle'     => __( 'Title', 'dfw' ),
+			'labelArtist'    => __( 'Artist', 'dfw' ),
+			'labelYear'      => __( 'Year', 'dfw' ),
+			'labelCountry'   => __( 'Country', 'dfw' ),
+			'category'       => __( 'Category (format)', 'dfw' ),
+			'subcategory'    => __( 'Subcategories (genre)', 'dfw' ),
+			'description'    => __( 'Description', 'dfw' ),
+			'descriptionTpl' => dfw_get_description_template(),
 		)
 	);
 }
@@ -81,7 +83,7 @@ function dfw_ajax_apply_to_product() {
 	}
 
 	$product_id = isset( $_POST['product_id'] ) ? absint( $_POST['product_id'] ) : 0;
-	$fields     = isset( $_POST['fields'] ) ? json_decode( sanitize_text_field( wp_unslash( $_POST['fields'] ) ), true ) : array();
+	$fields     = isset( $_POST['fields'] ) ? json_decode( wp_unslash( $_POST['fields'] ), true ) : array(); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized -- Individual fields are sanitized below.
 
 	if ( ! $product_id || empty( $fields ) ) {
 		wp_send_json_error( __( 'Missing product ID or fields.', 'dfw' ), 400 );
@@ -94,7 +96,13 @@ function dfw_ajax_apply_to_product() {
 	}
 
 	if ( ! empty( $fields['title'] ) ) {
-		$product->set_name( sanitize_text_field( $fields['title'] ) );
+		$title = sanitize_text_field( $fields['title'] );
+		$product->set_name( $title );
+		$product->set_slug( sanitize_title( $title ) );
+	}
+
+	if ( ! empty( $fields['description'] ) ) {
+		$product->set_description( wp_kses_post( $fields['description'] ) );
 	}
 
 	dfw_apply_categories( $product_id, $fields );
@@ -304,4 +312,15 @@ function dfw_get_or_create_product_cat( $name, $parent_id = 0 ) {
 	}
 
 	return (int) $result['term_id'];
+}
+
+/**
+ * Get the description template from settings.
+ *
+ * @return string The template string.
+ */
+function dfw_get_description_template() {
+	$settings = get_option( 'dfw_settings', array() );
+
+	return isset( $settings['description_template'] ) ? $settings['description_template'] : '';
 }
