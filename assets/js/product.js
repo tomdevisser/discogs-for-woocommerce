@@ -478,7 +478,11 @@
       })
       .then(function (result) {
         if (result.success) {
-          window.location.reload();
+          if (result.data && result.data.edit_url) {
+            window.location.href = result.data.edit_url;
+          } else {
+            window.location.reload();
+          }
         } else {
           console.error("Failed to apply data:", result);
         }

@@ -143,6 +143,7 @@ function dfw_ajax_apply_to_product() {
 	}
 
 	$product->set_attributes( $attributes );
+	$product->set_status( 'draft' );
 
 	$images = isset( $_POST['images'] ) ? json_decode( sanitize_text_field( wp_unslash( $_POST['images'] ) ), true ) : array();
 
@@ -170,7 +171,11 @@ function dfw_ajax_apply_to_product() {
 
 	$product->save();
 
-	wp_send_json_success();
+	wp_send_json_success(
+		array(
+			'edit_url' => get_edit_post_link( $product->get_id(), 'raw' ),
+		)
+	);
 }
 
 /**
